@@ -1,0 +1,17 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+timezone: Asia/Bangkok
+ssh_pwauth: true
+groups:
+- nc-user
+users:
+- name: nc-user
+  gecos: nipa cloud user
+  primary_group: nc-user
+  groups: nc-user
+  lock_passwd: false
+  shell: /bin/bash
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  passwd: ${password_hash}
+final_message: "The system is finally up, after $UPTIME seconds"
