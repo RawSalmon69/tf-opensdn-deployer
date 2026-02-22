@@ -59,17 +59,23 @@ These are installed automatically by `scripts/preflight.sh` in the `tf-ansible-d
 
 ### NIPA Cloud Setup
 
-Before running Terraform, prepare the following in the NIPA Cloud portal:
+Terraform provisions compute instances, ports, and floating IPs but does not create networks, the router, or security groups. The following resources must exist in the NIPA Cloud portal before running `terraform apply`.
 
-1. Create Network1 (eg. 10.10.1.0/24)
-2. Create Network2 (eg. 10.20.1.0/24)
-3. Create a Router and attach both networks to it.
-4. Add a static route in Network2: Destination `10.10.1.0/24`, Nexthop `10.20.1.1`.
-5. Ensure the required security groups exist: `SSH`, `In-Cluster`, `TF_ENDPOINT_SG (Ingress 8082, 8085, 8143, 8180)`, `ALL`.
-6. Create an OpenStack Application Credential for Terraform. The credential ID and secret can be downloaded from the NIPA Cloud dashboard under Project Overview → Manage Project.
-7. Check available quota in the project.
+1. Create Network1 (e.g. `10.10.1.0/24`) — control plane and management traffic (eth0 on all nodes)
+2. Create Network2 (e.g. `10.20.1.0/24`) — data plane and vRouter (eth1 / vhost0 on compute nodes)
+3. Create a Router and attach both networks to it
+4. Add a static route on Network2: Destination `10.10.1.0/24`, Next hop `10.20.1.1`
+5. Ensure the following security groups exist (create them if they do not):
 
-Terraform provisions compute instances, ports, and floating IPs, but does not create networks, the router, or security groups. All of the above must exist before running `terraform apply`.
+   | Group | Purpose |
+   |---|---|
+   | `SSH` | SSH ingress |
+   | `In-Cluster` | Unrestricted traffic between cluster nodes |
+   | `TF_ENDPOINT_SG` | Ingress on ports 8082, 8085, 8143, 8180 |
+   | `ALL` | Unrestricted ingress (used during initial setup) |
+
+6. Create an Application Credential for Terraform. The credential ID and secret can be downloaded from the NIPA Cloud dashboard under Project Overview → Manage Project.
+7. Verify that the project has sufficient quota for the required number of instances, volumes, and floating IPs.
 
 ### Install Terraform
 
@@ -105,96 +111,20 @@ Or download the binary directly from https://developer.hashicorp.com/terraform/d
 
 ---
 
-### Create `terraform.tfvars`
+### Configure `terraform.tfvars`
 
-#### macOS / Linux
+The repository includes a `terraform.tfvars` file with NIPA Cloud defaults pre-filled. Open it in any text editor and fill in the fields that are left empty:
 
-```bash
-cat > terraform.tfvars << EOF
-
-# OpenStack Keystone URL
-openstack_auth_url = "https://cloud-api.nipa.cloud:5000/v3"
-
-# OpenStack User Domain name
-openstack_domain_name = "nipacloud"
-
-# OpenStack Project name
-project_id = ""
-
-# OpenStack Application Credential ID
-openstack_application_credential_id = ""
-
-# OpenStack Application Secret
-openstack_application_credential_secret = ""
-
-# OpenStack Region
-openstack_region = "NCP-TH"
-
-# OpenStack Instance AZ
-instance_az = "NCP-NON"
-
-# OpenStack Instance Image ID - Using Ubuntu 22.04
-image_id = ""
-
-# OpenStack Instance OS Disk
-volume_size = 200
-
-# OpenStack Instance Interface Control (with Gateway)
-network1_id = ""
-
-# OpenStack Instance Interface for Vhost0
-network2_id = ""
-
-# OpenStack Floating IP pool
-floating_ip_pool_name = "Standard_Public_IP_Pool_NON"
-
-# Flavor for OpenStack Controller and OpenSDN Controller roles
-controller_flavor_name = "csa.2xlarge.v2"
-
-# Flavor for Compute roles
-compute_flavor_name = "csa.2xlarge.v2"
-
-# Number of OpenStack Compute Nodes
-compute_instance_count = 2
-
-EOF
-```
-
-#### Windows (PowerShell)
-
-```powershell
-@"
-openstack_auth_url = "https://cloud-api.nipa.cloud:5000/v3"
-openstack_domain_name = "nipacloud"
-project_id = ""
-openstack_application_credential_id = ""
-openstack_application_credential_secret = ""
-openstack_region = "NCP-TH"
-instance_az = "NCP-NON"
-image_id = ""
-volume_size = 200
-network1_id = ""
-network2_id = ""
-floating_ip_pool_name = "Standard_Public_IP_Pool_NON"
-controller_flavor_name = "csa.2xlarge.v2"
-compute_flavor_name = "csa.2xlarge.v2"
-compute_instance_count = 2
-"@ | Out-File terraform.tfvars -Encoding utf8
-```
-
-Or open `terraform.tfvars` in any text editor (Notepad, VS Code, etc.) and fill in the values manually.
-
-Fill in the empty fields before running Terraform. Reference:
-
-| Variable | Description |
+| Variable | Where to find it |
 |---|---|
-| `openstack_auth_url` | Keystone endpoint for your NIPA Cloud region |
-| `project_id` | OpenStack project ID (visible in NIPA Cloud dashboard) |
-| `openstack_application_credential_id` / `_secret` | From NIPA Cloud Application Credentials |
-| `image_id` | Ubuntu 22.04 image ID in your project |
-| `network1_id` | Control/management network ID |
-| `network2_id` | Data network ID (used for eth1 / vhost0) |
+| `project_id` | NIPA Cloud dashboard → Project Overview → Manage Project |
+| `openstack_application_credential_id` / `_secret` | NIPA Cloud dashboard → Project Overview → Manage Project |
+| `image_id` | NIPA Cloud portal → Compute → Images |
+| `network1_id` | NIPA Cloud portal → Network → Networks |
+| `network2_id` | NIPA Cloud portal → Network → Networks |
 | `resource_prefix` | Short prefix applied to all resource names (default: `tf`); must match the instance keys used in `instances.yaml` |
+
+All other values (region, availability zone, flavor names, etc.) are set to NIPA Cloud defaults and can be left as-is unless your environment differs.
 
 ---
 
@@ -483,7 +413,7 @@ ansible-playbook -i my_inventory.ini setup_host.yaml -k
 
 ---
 
-### Step 9 — Verify hostnames before configuring
+### Step 9 — Verify hostnames and /etc/hosts
 
 Every node's OS hostname must exactly match its key in `instances.yaml`. A mismatch causes RabbitMQ to form an incorrect cluster node name, resulting in a crash-loop that requires a full redeploy.
 
@@ -501,6 +431,20 @@ reboot
 ```
 
 The `resource_prefix` in `terraform.tfvars` determines instance names — ensure `instances.yaml` keys use the same prefix (e.g., if prefix is `tf`: `tf-compute-1`, `tf-openstack-controller`).
+
+Additionally, `/etc/hosts` on every node must contain entries for all cluster nodes. Cluster services such as RabbitMQ and Cassandra rely on hostname resolution and will fail if these entries are missing.
+
+Using the internal IPs from `terraform output`, add the entries to all nodes in one step:
+
+```bash
+ansible all -i my_inventory.ini --become -m ansible.builtin.blockinfile -a \
+  "path=/etc/hosts marker='# {mark} OPENSDN CLUSTER HOSTS' block='10.10.1.15 tf-openstack-controller
+10.10.1.18 tf-opensdn-controller
+10.10.1.16 tf-compute-1
+10.10.1.17 tf-compute-2'"
+```
+
+Replace the IPs and hostnames with the values from `terraform output`. Add or remove lines to match your `compute_instance_count`.
 
 ---
 
@@ -532,12 +476,14 @@ Before installing OpenStack, attach each compute node's eth1 data port via the N
 
 ### Step 12 — Install OpenStack (~45 minutes)
 
+Replace `<OPENSTACK_CONTROLLER_FIP>` with the floating IP of the OpenStack controller from Step 1. This configures the noVNC proxy URL so that browser console sessions are accessible from outside the cluster.
+
 ```bash
 ansible-playbook \
   -e orchestrator=openstack \
   -e virtualenv=/opt/kollaenv \
   -e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
-  -e novnc_public_ip=<CONTROLLER_FIP> \
+  -e novnc_public_ip=<OPENSTACK_CONTROLLER_FIP> \
   -i inventory/ playbooks/install_openstack.yml
 ```
 
