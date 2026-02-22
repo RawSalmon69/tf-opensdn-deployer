@@ -1,11 +1,11 @@
-# Architechture
+# Architecture
 
 ```
 +-----------+ (network1)
 |           +---------------------+--------------------------+---------------------------+--------------------------+
 |           |                     |FIP                       |FIP                        |FIP                       |FIP
 |           |                     |                          |                           |                          |
-|  Logical  |                 eth0|10.10.1.x/24          eth0|10.10.1.x/24           eth0|10.10.1.x/24          eth0|10.10.1.x/24 
+|  Logical  |                 eth0|10.10.1.x/24          eth0|10.10.1.x/24           eth0|10.10.1.x/24          eth0|10.10.1.x/24
 |  Router   |         +-----------+-----------+  +-----------+-----------+   +-----------+-----------+  +-----------+-----------+
 |           |         |   [   OpenStack   ]   |  |   [   OpenSDN    ]    |   | [ OpenStack Compute ] |  | [ OpenStack Compute ] |
 |           |         |    ( Controller  )    |  |    ( Controller  )    |   |                       |  |                       |
@@ -17,30 +17,99 @@
       |               |  Neutron Server       |  |  control, dns named   |   |                       |  |                       |
       |               |  Neutron Metadata     |  |  webui, job, redis    |   |                       |  |                       |
       |               +-----------------------+  +-----------------------+   +-----------+-----------+  +-----------+-----------+
-      |                                                                              eth1| (vhost0)             eth1| (vhost0) 
+      |                                                                              eth1| (vhost0)             eth1| (vhost0)
       | (network2)                                                                       |                          |
       +----------------------------------------------------------------------------------+--------------------------+
 
 ```
-# STEP 
 
-## 1. Prerequiresite
-    1.1 Create Network1 (eg. 10.10.1.0/24)
-    1.2 Create Network2 (eg. 10.20.1.0/24)
-    1.3 Create Router and attach Network1 and Network2 in to it.
-    1.4 Add additional route in Network2 eg. Destionation IP 10.10.1.0/24, Nexthop IP 10.20.1.1.
-    1.5 Check that the required security groups exist: `SSH`, `In-Cluster`, `TF_ENDPOINT_SG(Ingress 8082,8085,8143,8180)`, `ALL`.
-    1.6 Create an OpenStack Application Credential for Terraform to use.
-    1.7 Recheck available quota in the project.
+---
 
-## Install Terraform (MAC)
+## NIPA Cloud Reference
+
+- NIPA Cloud documentation: https://docs-epc.gitbook.io/ncs-documents/
+- OpenRC credentials: NIPA Cloud dashboard → Project Overview → Manage Project → Download **Public API RC file**
+  Source this file before running any `openstack` CLI command: `source <projectname>-openrc.sh`
+
+---
+
+## Prerequisites (on the OpenStack controller node)
+
+These are installed automatically by `scripts/preflight.sh` in the `tf-ansible-deployer` repo, run in Step 4 of the Deployment Order below.
+
+**Python packages**:
+- `ansible-core>=2.15,<2.17`
+- `kolla-ansible==20.3.0`
+- `requests<2.32`
+
+**Ansible Galaxy collections**:
+- `ansible.posix`
+- `ansible.utils`
+- `ansible.netcommon`
+- `community.general`
+- `community.docker`
+- `containers.podman`
+- `openstack.cloud`
+
+---
+
+## Phase 1 — Run from Your Local Machine
+
+> The steps in this section run on your local machine. Terraform provisions the cloud infrastructure on NIPA Cloud. Once `terraform apply` completes, all further steps move to the OpenStack controller, which serves as the deployer host for all Ansible playbooks.
+
+### NIPA Cloud Setup
+
+Before running Terraform, prepare the following in the NIPA Cloud portal:
+
+1. Create Network1 (eg. 10.10.1.0/24)
+2. Create Network2 (eg. 10.20.1.0/24)
+3. Create a Router and attach both networks to it.
+4. Add a static route in Network2: Destination `10.10.1.0/24`, Nexthop `10.20.1.1`.
+5. Ensure the required security groups exist: `SSH`, `In-Cluster`, `TF_ENDPOINT_SG (Ingress 8082, 8085, 8143, 8180)`, `ALL`.
+6. Create an OpenStack Application Credential for Terraform. The credential ID and secret can be downloaded from the NIPA Cloud dashboard under Project Overview → Manage Project.
+7. Check available quota in the project.
+
+Terraform provisions compute instances, ports, and floating IPs, but does not create networks, the router, or security groups. All of the above must exist before running `terraform apply`.
+
+### Install Terraform
+
+#### macOS
+
 ```bash
-    brew tap hashicorp/tap
-    brew install hashicorp/tap/terraform
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
 ```
 
-## Create Terraform variable 
+#### Linux (Ubuntu/Debian)
+
+```bash
+sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install terraform
 ```
+
+#### Windows
+
+Using winget (Windows 10/11):
+```powershell
+winget install HashiCorp.Terraform
+```
+
+Using Chocolatey:
+```powershell
+choco install terraform
+```
+
+Or download the binary directly from https://developer.hashicorp.com/terraform/downloads and add it to your `PATH`.
+
+---
+
+### Create `terraform.tfvars`
+
+#### macOS / Linux
+
+```bash
 cat > terraform.tfvars << EOF
 
 # OpenStack Keystone URL
@@ -58,13 +127,13 @@ openstack_application_credential_id = ""
 # OpenStack Application Secret
 openstack_application_credential_secret = ""
 
-# OpenStack Region 
+# OpenStack Region
 openstack_region = "NCP-TH"
 
 # OpenStack Instance AZ
 instance_az = "NCP-NON"
 
-# OpenStack Instance Image ID - Using Rocky 9.3
+# OpenStack Instance Image ID - Using Ubuntu 22.04
 image_id = ""
 
 # OpenStack Instance OS Disk
@@ -76,267 +145,198 @@ network1_id = ""
 # OpenStack Instance Interface for Vhost0
 network2_id = ""
 
-# OpenStack Floating IP for assosiate with Interface Control
+# OpenStack Floating IP pool
 floating_ip_pool_name = "Standard_Public_IP_Pool_NON"
 
-# OpenStack Instance Flavor Name (For OpenStack Contoller role and OpenSDN Controller role)
+# Flavor for OpenStack Controller and OpenSDN Controller roles
 controller_flavor_name = "csa.2xlarge.v2"
 
-# OpenStack Instance Flavor Name (For Compute role)
+# Flavor for Compute roles
 compute_flavor_name = "csa.2xlarge.v2"
 
-# Number of OpenStack Compute Node 
+# Number of OpenStack Compute Nodes
 compute_instance_count = 2
 
 EOF
 ```
 
-## Customizing the Instance Password 
-The instances are created with a default user `nc-user` and a default password `y0V#ew8k4nM+`. To change this password, you need to update two variables in your terraform.tfvars file: 
-1. `ssh_user_password`: The plain-text password used by Terraform to run the post-creation SSH connection test. 
-2. `ssh_user_password_hash`: The cryptographically-hashed version of the password that cloud-init uses to set the user's password on the instance. To generate a new password hash, use the openssl command. For example, to generate a hash for the password MyNewSecretPassword!: 
-```bash 
-openssl passwd -6 'MyNewSecretPassword!' 
+#### Windows (PowerShell)
+
+```powershell
+@"
+openstack_auth_url = "https://cloud-api.nipa.cloud:5000/v3"
+openstack_domain_name = "nipacloud"
+project_id = ""
+openstack_application_credential_id = ""
+openstack_application_credential_secret = ""
+openstack_region = "NCP-TH"
+instance_az = "NCP-NON"
+image_id = ""
+volume_size = 200
+network1_id = ""
+network2_id = ""
+floating_ip_pool_name = "Standard_Public_IP_Pool_NON"
+controller_flavor_name = "csa.2xlarge.v2"
+compute_flavor_name = "csa.2xlarge.v2"
+compute_instance_count = 2
+"@ | Out-File terraform.tfvars -Encoding utf8
 ```
-This will output a string that starts with `$6$`. You would then update your terraform.tfvars file like this:  
+
+Or open `terraform.tfvars` in any text editor (Notepad, VS Code, etc.) and fill in the values manually.
+
+Fill in the empty fields before running Terraform. Reference:
+
+| Variable | Description |
+|---|---|
+| `openstack_auth_url` | Keystone endpoint for your NIPA Cloud region |
+| `project_id` | OpenStack project ID (visible in NIPA Cloud dashboard) |
+| `openstack_application_credential_id` / `_secret` | From NIPA Cloud Application Credentials |
+| `image_id` | Ubuntu 22.04 image ID in your project |
+| `network1_id` | Control/management network ID |
+| `network2_id` | Data network ID (used for eth1 / vhost0) |
+| `resource_prefix` | Short prefix applied to all resource names (default: `tf`); must match the instance keys used in `instances.yaml` |
+
+---
+
+### Customizing the Instance Password
+
+The instances are created with default user `nc-user` and password `y0V#ew8k4nM+`. To change it, update two variables in `terraform.tfvars`:
+
+1. `ssh_user_password` — plain-text password used by Terraform's SSH connection test
+2. `ssh_user_password_hash` — hashed password set by cloud-init on the instance
+
+#### Generate a password hash
+
+**macOS / Linux:**
+```bash
+openssl passwd -6 'MyNewSecretPassword!'
 ```
-# In terraform.tfvars
-ssh_user_password = "MyNewSecretPassword!"
+
+**Windows (PowerShell — requires OpenSSL):**
+```powershell
+# Option 1: via WSL
+wsl openssl passwd -6 'MyNewSecretPassword!'
+
+# Option 2: via Git Bash
+openssl passwd -6 'MyNewSecretPassword!'
+```
+
+The output starts with `$6$`. Add it to `terraform.tfvars`:
+
+```hcl
+ssh_user_password      = "MyNewSecretPassword!"
 ssh_user_password_hash = "$6$your_generated_hash_string..."
 ```
 
-## Before you can run a plan or apply, you must initialize the Terraform working directory.
-```
+If you need to reset an instance password after deployment, it can be done directly from the NIPA Cloud dashboard under Compute → Instances → Reset Password.
+
+---
+
+### Initialize and Apply
+
+The following commands are the same on all platforms:
+
+```bash
 terraform init
-```
-
-## Run a plan to see what resources will be created.
-```
 terraform plan
-```
-
-
-## If the plan is acceptable, apply the configuration to create the infrastructure.
-```
 terraform apply
 ```
 
-## Advanced Usage
+After `terraform apply` completes, note the output — it includes the floating IPs and internal IPs you will need throughout Phase 2.
 
-### Applying Specific Resources
-
-You can use the `-target` flag to apply changes to a specific resource or a single instance of a resource created with `count`. This is useful for development or for recovering a single failed resource.
-
-**Note:** Using `-target` can be risky as it ignores dependencies. Use with caution.
-
-```bash
-# Apply changes only to the OpenStack controller instance and all of its related
-# resources (network ports, floating IP, and SSH test), you must target
-# every resource individually.
-terraform apply -target=openstack_compute_instance_v2.tf-openstack-controller \
-  -target=openstack_networking_port_v2.tf-openstack-controller-eth0 \
-  -target=openstack_networking_floatingip_v2.tf-openstack-controller-external-ip \
-  -target=openstack_networking_floatingip_associate_v2.tf-openstack-controller-fip-associate \
-  -target=ssh_resource.test-ssh-openstack-controller
-
-# To apply changes to the first compute node (index 0) and all of its related resources.
-terraform apply \
-  -target=openstack_networking_port_v2.tf-compute-eth0-ports[0] \
-  -target=openstack_networking_port_v2.tf-compute-eth1-ports[0] \
-  -target=openstack_networking_floatingip_v2.tf-compute-external-ips[0] \
-  -target=openstack_compute_instance_v2.tf-computes[0] \
-  -target=openstack_networking_floatingip_associate_v2.tf-compute-fip-associates[0] \
-  -target=ssh_resource.test-ssh-computes[0]
-
-```
-
-### Destroying Resources
-
-To tear down all infrastructure created by this project, use the `destroy` command.
-```bash
-terraform destroy
-```
-
-You can also use the `-target` flag to destroy a specific resource.
-```bash
-# Destroy only the second compute node (index 1)
-terraform destroy -target=openstack_compute_instance_v2.tf-computes[1]
-```
-
-# ติดตั้ง OpenSDN
-
-prerequisite ต้องสร้าง vm มาก่อน
-
-- terraform apply (https://gitlab.nipa.cloud/tungsten-fabric/terrafrom-opensdn-lab-deployer)
-
-ผลลัพธ์จาก terraform
-```
-moo-openstack-controller     ansible_host=10.10.1.15  ansible_ssh_user=nc-user   #fip=103.29.190.213
-moo-opensdn-controller      ansible_host=10.10.1.18  ansible_ssh_user=nc-user   #fip=103.29.190.227
-moo-compute-1      ansible_host=10.10.1.16  ansible_ssh_user=nc-user   #fip=103.29.190.224
-moo-compute-2      ansible_host=10.10.1.17  ansible_ssh_user=nc-user   #fip=103.29.190.225
-```
-
-
-
-
-
-Prepare Deployer Host
-
-
-
-ใช้ terminal ssh ไปที่  openstack-controller เราจะใช้เป็นเครื่องรัน ansible 
-
-
-สร้าง venv ชื่อ kolla-deploy-env ไว้ลง pip kolla-ansible 
-
-```
-apt-get install python3 python3-pip python3-venv sshpass -y
-
-python3 -m venv /opt/kolla-deploy-env
-source /opt/kolla-deploy-env/bin/activate
-
-pip3 install kolla-ansible
-#pip3 install 'ansible>=6,<8'
-ansible-galaxy collection install community.docker
-
-ssh-keygen
-```
-
-
-check ansible version (เผื่อมีปัญหา)
-
-```
-root@moo-openstack-controller:~/tf-ansible-deployer~$ ansible --version
-ansible [core 2.18.11]
-  config file = /root/tf-ansible-deployer/ansible.cfg
-  configured module search path = ['/root/.ansible/plugins/modules', '/usr/share/ansible/plugins/modules']
-  ansible python module location = /opt/kolla-deploy-env/lib/python3.12/site-packages/ansible
-  ansible collection location = /root/.ansible/collections:/usr/share/ansible/collections
-  executable location = /opt/kolla-deploy-env/bin/ansible
-  python version = 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0] (/opt/kolla-deploy-env/bin/python3)
-  jinja version = 3.1.6
-  libyaml = True
-
-(kolla-deploy-env) root@moo-openstack-controller:~/tf-ansible-deployer~$ kolla-ansible --version
-kolla-ansible 20.3.0
-```
-
-Create Inventory From Terraform Output
-
-
-Terraform จะให้มา จาก output ตอนรันเสร็จ สามารถ copy มาใช้ได้
-
-```
-cat > ./my_inventory.ini << EOT
-
-moo-openstack-controller     ansible_host=10.10.1.15  ansible_ssh_user=nc-user   #fip=103.29.190.213
-moo-opensdn-controller      ansible_host=10.10.1.18  ansible_ssh_user=nc-user   #fip=103.29.190.227
-moo-compute-1      ansible_host=10.10.1.16  ansible_ssh_user=nc-user   #fip=103.29.190.224
-moo-compute-2      ansible_host=10.10.1.17  ansible_ssh_user=nc-user   #fip=103.29.190.225
-
-EOT
-```
-
-
-ทดสอบ inventory ที่ได้มาโดยการ  ping pong check
-
-```
-cat > ansible.cfg << EOF
-[defaults]
-host_key_checking = False
-
-EOF 
-
-ansible -m ping all -i my_inventory.ini -k
-```
-
-
-
-
-
-
-
-เนื่องจากเครื่องที่สร้างมายังไม่พร้อมรัน ansible เราจำเป็นต้อง prepare host เพื่อให้รัน ansible ได้
-
-- copy ssh pub key to root user  ทำให้ ssh ไป remote ได้โดยไม่มี password
-- install package and create venv (/opt/kollaenv) ไว้ลง pip package เวลา deployer ต้องใช้ตอน run ansible
-
-```
-cat > ./setup_host.yaml <<EOF
 ---
-- name: Prepare Host for tf-ansible-deployer
-  hosts: all
-  become: true
 
-  tasks:
-    - name: Ensure .ssh directory exists and has correct permissions
-      ansible.builtin.file:
-        path: "/root/.ssh"
-        state: directory
-        mode: '0700'
+## Phase 2 — Run from the OpenStack Controller
 
-    - name: Add public key to authorized_keys
-      ansible.posix.authorized_key:
-        user: root
-        state: present
-        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+> All steps in this section run on the OpenStack controller node, which serves as the Ansible deployer host. It has network access to all other nodes and is where `preflight.sh`, `setup_host.yaml`, and every `ansible-playbook` command is executed.
 
-    - name: Install required packages
-      ansible.builtin.apt:
-        name:
-          - python3
-          - python3-pip
-          - python3-venv
-        state: present
-        update_cache: yes
+---
 
-    - name: Create a virtual environment for docker-py
-      ansible.builtin.command: >
-        python3 -m venv --system-site-packages /opt/kollaenv
-      args:
-        creates: /opt/kollaenv/bin/activate
+## Reference: Network Interface Setup
 
-    - name: Create Python virtual environment at /opt/kollaenv
-      ansible.builtin.pip:
-        name: 
-          - docker<7
-        virtualenv: /opt/kollaenv
+After `terraform apply`, the eth1 data ports on compute nodes must be attached manually before installing OpenStack:
 
-EOF
+- Run `terraform show` to identify the eth1 port IDs for each compute node.
+- Attach each eth1 port via the NIPA Cloud portal: Compute → Instances → Attach Interface.
+- Verify the `In-Cluster` security group is applied to all eth1 ports.
+
+---
+
+## Deployment Order
+
+### Step 1 — Provision infrastructure (local machine)
+
+```bash
+terraform apply
 ```
 
+Note the output — you will need the floating IPs and internal IPs in subsequent steps.
 
-Run setup_host.yaml Playbook
+---
 
+### Step 2 — SSH into the OpenStack controller
 
+```bash
+ssh nc-user@<OPENSTACK_CONTROLLER_FIP>
+sudo -i
 ```
-ansible-playbook -i my_inventory.ini setup_host.yaml -k
+
+> From this point on, every command runs on the OpenStack controller. It acts as the Ansible deployer for all nodes.
+
+---
+
+### Step 3 — Clone the Ansible deployer
+
+```bash
+git clone https://github.com/RawSalmon69/tf-ansible-deployer /root/tf-ansible-deployer
+cd /root/tf-ansible-deployer
 ```
 
+---
 
+### Step 4 — Run preflight and activate the environment
 
-
-หลังจากนี้จะเป็น step จาก upsteam repo tf-ansible-deployer แต่เราจะต้องปรับเปลี่ยนบางอย่างเพื่อให้ติดตั้งได้ไว และใช้ได้ทันที
-
-
-
-
-
-
-
-
-Setup OpenSDN Deployer
-
+```bash
+bash scripts/preflight.sh
+source /opt/kolla-deploy-env/bin/activate
 ```
-cd /root/
-git clone https://github.com/OpenSDN-io/tf-ansible-deployer 
-cd ./tf-ansible-deployer/config/
-cat > ./instances.yaml << EOF
+
+This installs `ansible-core`, `kolla-ansible`, all required Galaxy collections, and generates an SSH keypair if one does not exist.
+
+Verify the installation:
+
+```bash
+ansible --version
+kolla-ansible --version
+```
+
+---
+
+### Step 5 — Edit `config/instances.yaml`
+
+`config/instances.yaml` defines the role of each node and the OpenSDN configuration. Open it for editing:
+
+```bash
+vi config/instances.yaml
+```
+
+Update the following fields:
+
+- Instance keys (e.g. `tf-openstack-controller`, `tf-compute-1`) must exactly match the OS hostname of each node. Terraform sets the instance name, which cloud-init uses as the hostname.
+- `ip:` fields — set to the internal IPs from `terraform output` (noted in Step 1).
+- `VROUTER_GATEWAY:` — gateway IP of network2 (eth1 subnet). Find this under Network → Subnets in the NIPA Cloud portal.
+- `KEYSTONE_AUTH_ADMIN_PASSWORD` / `keystone_admin_password` — change from the default to a secure value.
+- `CONTAINER_REGISTRY` — registry hosting the OpenSDN images for your deployment.
+
+Network IDs, subnet details, and application credentials can be found in the NIPA Cloud dashboard under Project Overview → Manage Project.
+
+Reference configuration:
+
+```yaml
 provider_config:
   bms:
 instances:
-  moo-openstack-controller:
+  tf-openstack-controller:
     provider: bms
     ip: 10.10.1.15
     roles:
@@ -344,7 +344,7 @@ instances:
       openstack_network:
       openstack_storage:
 
-  moo-opensdn-controller:
+  tf-opensdn-controller:
     provider: bms
     ip: 10.10.1.18
     roles:
@@ -357,7 +357,7 @@ instances:
       control:
       webui:
 
-  moo-compute-1:
+  tf-compute-1:
     provider: bms
     ip: 10.10.1.16
     roles:
@@ -366,7 +366,7 @@ instances:
         PHYSICAL_INTERFACE: eth1
         VROUTER_GATEWAY: 10.20.1.1
 
-  moo-compute-2:
+  tf-compute-2:
     provider: bms
     ip: 10.10.1.17
     roles:
@@ -419,384 +419,229 @@ kolla_config:
     neutron_opencontrail_init_image_full: opensdn/opensdn-openstack-neutron-init:latest
     neutron_opencontrail_ml2_init_image_full: opensdn/opensdn-openstack-neutron-init:latest
     nova_compute_opencontrail_init_image_full: opensdn/opensdn-openstack-compute-init:latest
-    #docker_registry: "xxxxxxxxx"         # Default Image From quey.io
-    #docker_namespace: "xxxxxxxxx"        # Default Image From quey.io
-    #docker_registry_username: "xxxxxxx" 
+    #docker_registry: "xxxxxxxxx"         # Default Image From quay.io
+    #docker_namespace: "xxxxxxxxx"        # Default Image From quay.io
+    #docker_registry_username: "xxxxxxx"
 
   kolla_passwords:
     keystone_admin_password: contrail123Nipa
     metadata_secret: contrail123Nipa
     #docker_registry_password: xxxxxxx
+```
+
+---
+
+### Step 6 — Create the Ansible inventory
+
+`my_inventory.ini` is a static inventory used for connectivity checks and `setup_host.yaml`. It is separate from the `inventory/` directory used by the deployer playbooks.
+
+Run the following on your local machine and paste the output into the controller:
+
+```bash
+# On local machine
+terraform output ansible_inventory_internal
+```
+
+Then on the controller, create the file:
+
+```bash
+cat > ~/tf-ansible-deployer/my_inventory.ini << 'EOF'
+# Paste terraform output here, for example:
+tf-openstack-controller     ansible_host=10.10.1.15  ansible_ssh_user=nc-user   #fip=103.29.190.213
+tf-opensdn-controller       ansible_host=10.10.1.18  ansible_ssh_user=nc-user   #fip=103.29.190.227
+tf-compute-1                ansible_host=10.10.1.16  ansible_ssh_user=nc-user   #fip=103.29.190.224
+tf-compute-2                ansible_host=10.10.1.17  ansible_ssh_user=nc-user   #fip=103.29.190.225
 EOF
 ```
 
-แก้ไข IP, Hostname ให้เป็นของ Instance ตัวเองก่อน
+---
 
-ขั้นตอนการ prepare host ก่อนจะรัน ติดตั้ง opensdn + openstack  (5 minutes)
+### Step 7 — Verify connectivity
 
-```
-cd /root/tf-ansible-deployer
+Create an `ansible.cfg` to disable host key checking for freshly provisioned instances, then run a ping check to confirm Ansible can reach all nodes:
 
-ansible-playbook \
--e orchestrator=openstack \
--e virtualenv=/opt/kollaenv \
--e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
--i inventory/ playbooks/configure_instances.yml -v
-```
-
-1. ขั้นตอนการติดตั้ง OpenStack (45 minutes)
-   
-
-```
-
-### แก้ปัญหา playbook หายและ format เปลี่ยนจาก ansible version
-
-cat > install_openstack.yaml-patch <<  EOF
-diff --git a/playbooks/install_openstack.yml b/playbooks/install_openstack.yml
-index 0fd0da7..71ceca6 100644
---- a/playbooks/install_openstack.yml
-+++ b/playbooks/install_openstack.yml
-@@ -29,12 +29,12 @@
-   vars_files:
-     - "{{ hostvars['localhost'].config_file }}"
-   vars:
--    - container_registry: "{{ hostvars['localhost'].container_registry }}"
--    - contrail_version_tag: "{{ hostvars['localhost'].contrail_version_tag }}"
--    - config_nodes_list: "{{ hostvars['localhost'].config_nodes_list }}"
--    - analytics_nodes_list: "{{ hostvars['localhost'].analytics_nodes_list }}"
--    - openstack_nodes_list: "{{ hostvars['localhost'].openstack_nodes_list }}"
--    - webui_nodes_list: "{{ hostvars['localhost'].webui_nodes_list }}"
-+    container_registry: "{{ hostvars['localhost'].container_registry }}"
-+    contrail_version_tag: "{{ hostvars['localhost'].contrail_version_tag }}"
-+    config_nodes_list: "{{ hostvars['localhost'].config_nodes_list }}"
-+    analytics_nodes_list: "{{ hostvars['localhost'].analytics_nodes_list }}"
-+    openstack_nodes_list: "{{ hostvars['localhost'].openstack_nodes_list }}"
-+    webui_nodes_list: "{{ hostvars['localhost'].webui_nodes_list }}"
-   tasks:
-   - name: Import group variables
-     no_log: True
-@@ -90,7 +90,7 @@
-   connection: local
-   gather_facts: no
-   vars:
--    - kolla_config: "{{ hostvars['localhost'].get('kolla_config', None) }}"
-+    kolla_config: "{{ hostvars['localhost'].get('kolla_config', None) }}"
-   vars_files:
-     - "{{ config_file }}"
-   pre_tasks:
-@@ -121,7 +121,7 @@
-   connection: local
-   gather_facts: no
-   vars:
--    - kolla_config: "{{ hostvars['localhost'].get(kolla_config, None) }}"
-+    kolla_config: "{{ hostvars['localhost'].get(kolla_config, None) }}"
-   vars_files:
-     - "{{ config_file }}"
-   pre_tasks:
-@@ -173,4 +173,4 @@
-     action: deploy
-     kolla_action: deploy
-
--- import_playbook: "{{ playbook_dir }}/../../contrail-kolla-ansible/ansible/post-deploy-contrail.yml"
-+#- import_playbook: "{{ playbook_dir }}/../../contrail-kolla-ansible/ansible/post-deploy-contrail.yml"
+```bash
+cat > ansible.cfg << EOF
+[defaults]
+host_key_checking = False
 EOF
 
-## รัน apply patch file
-git apply install_openstack.yaml-patch
+ansible -m ping all -i my_inventory.ini -k
+```
 
+All nodes must return `pong` before continuing.
 
-cd /root/tf-ansible-deployer
+---
+
+### Step 8 — Prepare all host nodes
+
+Run `setup_host.yaml` to distribute the SSH key and create the `/opt/kollaenv` Python venv on all nodes:
+
+```bash
+ansible-playbook -i my_inventory.ini setup_host.yaml -k
+```
+
+---
+
+### Step 9 — Verify hostnames before configuring
+
+Every node's OS hostname must exactly match its key in `instances.yaml`. A mismatch causes RabbitMQ to form an incorrect cluster node name, resulting in a crash-loop that requires a full redeploy.
+
+Check all hostnames:
+
+```bash
+ansible -m setup all -a 'filter=ansible_hostname' -i my_inventory.ini
+```
+
+If any node's hostname is wrong, fix it on that node and reboot:
+
+```bash
+hostnamectl set-hostname <correct-name>
+reboot
+```
+
+The `resource_prefix` in `terraform.tfvars` determines instance names — ensure `instances.yaml` keys use the same prefix (e.g., if prefix is `tf`: `tf-compute-1`, `tf-openstack-controller`).
+
+---
+
+### Step 10 — Configure instances (~5 minutes)
+
+The deployer playbooks use the `inventory/` directory, which is populated dynamically from `config/instances.yaml`. This is separate from `my_inventory.ini` used in the previous steps.
+
+```bash
 ansible-playbook \
--e orchestrator=openstack \
--e virtualenv=/opt/kollaenv \
--e ansible_python_interpreter=/opt/kollaenv/bin/python \
--i inventory/ playbooks/install_openstack.yml -v
-```
-2. ขั้นตอนการติดตั้ง OpenSDN  (20 minutes)
-   
-
-
-
-โดยจะใช้ image จาก global_configuration  CONTAINER_REGISTRY: registry.nipa.cloud/nipa-opensdn
-
-```
-cd /root/tf-ansible-deployer
-
-## แก้ไขปัญหา docker_compose module end of support ใน ansible version ที่เราใช้
-grep -rl "docker_compose:" playbooks/roles/ | xargs sed -i "s/docker_compose:/community.docker.docker_compose_v2:/g"
-grep -rl "version: '2.4'"  playbooks/roles/ | xargs sed -i "s/version: '2.4'/---/g"
-
-ansible-playbook -e orchestrator=openstack \
--e virtualenv=/opt/kollaenv \
--e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
--i inventory/ playbooks/install_opensdn.yml -v
+  -e orchestrator=openstack \
+  -e virtualenv=/opt/kollaenv \
+  -e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
+  -i inventory/ playbooks/configure_instances.yml
 ```
 
+Hostname validation runs as play 2 — resolve any failures before continuing.
 
+---
 
+### Step 11 — Attach eth1 ports (NIPA Cloud portal)
 
-ทดสอบเข้า OpenStack Horizon
+Before installing OpenStack, attach each compute node's eth1 data port via the NIPA Cloud portal:
 
+- Run `terraform show` (locally) to identify the eth1 port IDs for each compute node.
+- Attach each port via the NIPA Cloud portal: Compute → Instances → Attach Interface.
+- Verify the `In-Cluster` security group is applied to all eth1 ports.
 
-http://tf-openstack-controller
-user admin
-password contrail123Nipa
+---
 
+### Step 12 — Install OpenStack (~45 minutes)
 
-
-ทดสอบเข้า OpenSDN webUI
-
-
-http://tf-openstack-controller:8180
-user admin
-password contrail123Nipa
-
-
-
-
-
-
-
-After Installation
-
+```bash
+ansible-playbook \
+  -e orchestrator=openstack \
+  -e virtualenv=/opt/kollaenv \
+  -e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
+  -e novnc_public_ip=<CONTROLLER_FIP> \
+  -i inventory/ playbooks/install_openstack.yml
 ```
+
+---
+
+### Step 13 — Install OpenSDN (~20 minutes)
+
+```bash
+ansible-playbook \
+  -e orchestrator=openstack \
+  -e virtualenv=/opt/kollaenv \
+  -e ansible_python_interpreter=/opt/kollaenv/bin/python3 \
+  -i inventory/ playbooks/install_opensdn.yml
+```
+
+vRouter initialization runs automatically at the end of this playbook.
+
+---
+
+## After Installation
+
+Run `kolla-ansible post-deploy` from the controller:
+
+```bash
 cd /root/contrail-kolla-ansible
-
 kolla-ansible post-deploy -i ansible/inventory/my_inventory --configdir=/root/contrail-kolla-ansible/etc/kolla/
-
 ```
 
-การใช้งาน command openstack (จะมี venv แยกสำหรับ command openstack โดยเฉพราะ)
+---
 
+## OpenStack CLI Setup
 
-```
+Kolla generates OpenRC and clouds.yaml files after `post-deploy`. Set up a separate venv for the OpenStack CLI on the controller:
+
+```bash
 deactivate
 
 python3 -m venv /opt/osenv
 source /opt/osenv/bin/activate
 
 pip3 install openstackclient
+```
 
+The generated credential files are in `/root/contrail-kolla-ansible/etc/kolla/`:
+
+```
+-rw------- 1 root root   551 admin-openrc.sh
+-rw------- 1 root root   477 admin-openrc-system.sh
+-rw------- 1 root root   926 clouds.yaml
+-rw-r--r-- 1 root root  1429 globals.yml
+-rw-r----- 1 root root 35522 passwords.yml
+-rw------- 1 root root   462 public-openrc.sh
+-rw------- 1 root root   394 public-openrc-system.sh
+```
+
+The Keystone URL in these files is generated with an empty host — fix it before use:
+
+```bash
 cd /root/contrail-kolla-ansible/etc/kolla
-ls -al
-drwxr-xr-x 2 root root  4096 Nov 14 01:31 .
-drwxr-xr-x 3 root root  4096 Nov 14 00:52 ..
--rw------- 1 root root   551 Nov 14 01:31 admin-openrc.sh
--rw------- 1 root root   477 Nov 14 01:31 admin-openrc-system.sh
--rw------- 1 root root   926 Nov 14 01:31 clouds.yaml
--rw-r--r-- 1 root root  1429 Nov 14 01:00 globals.yml
--rw-r----- 1 root root 35522 Nov 14 01:24 passwords.yml
--rw------- 1 root root   462 Nov 14 01:31 public-openrc.sh
--rw------- 1 root root   394 Nov 14 01:31 public-openrc-system.sh
-
-## Replace IP in openrc file
- sed -i 's#http://:5000#http://10.10.1.15:5000#g' clouds.yaml
- sed -i 's#http://:5000#http://10.10.1.15:5000#g' *.sh
-
-
+sed -i 's#http://:5000#http://10.10.1.15:5000#g' clouds.yaml
+sed -i 's#http://:5000#http://10.10.1.15:5000#g' *.sh
 ```
 
+Then source the credentials:
 
-
-
-
-
-Create Basic Resource
-
-```
-openstack flavor create --id 1 --ram 512 --disk 1 --vcpus 1 m1.tiny
-openstack flavor create --id 2 --ram 2048 --disk 20 --vcpus 1 m1.small
-openstack flavor create --id 3 --ram 4096 --disk 40 --vcpus 2 m1.medium
-openstack flavor create --id 4 --ram 8192 --disk 80 --vcpus 4 m1.large
-openstack flavor create --id 5 --ram 16384 --disk 160 --vcpus 8 m1.xlarge
-openstack flavor create --id 6 --ram 512 --disk 1 --vcpus 2 m2.tiny
-+----------------------------+---------+
-| Field                      | Value   |
-+----------------------------+---------+
-| OS-FLV-DISABLED:disabled   | False   |
-| OS-FLV-EXT-DATA:ephemeral  | 0       |
-| description                | None    |
-| disk                       | 1       |
-| id                         | 1       |
-| name                       | m1.tiny |
-| os-flavor-access:is_public | True    |
-| properties                 |         |
-| ram                        | 512     |
-| rxtx_factor                | 1.0     |
-| swap                       | 0       |
-| vcpus                      | 1       |
-+----------------------------+---------+
-+----------------------------+----------+
-| Field                      | Value    |
-+----------------------------+----------+
-| OS-FLV-DISABLED:disabled   | False    |
-| OS-FLV-EXT-DATA:ephemeral  | 0        |
-| description                | None     |
-| disk                       | 20       |
-| id                         | 2        |
-| name                       | m1.small |
-| os-flavor-access:is_public | True     |
-| properties                 |          |
-| ram                        | 2048     |
-| rxtx_factor                | 1.0      |
-| swap                       | 0        |
-| vcpus                      | 1        |
-+----------------------------+----------+
-+----------------------------+-----------+
-| Field                      | Value     |
-+----------------------------+-----------+
-| OS-FLV-DISABLED:disabled   | False     |
-| OS-FLV-EXT-DATA:ephemeral  | 0         |
-| description                | None      |
-| disk                       | 40        |
-| id                         | 3         |
-| name                       | m1.medium |
-| os-flavor-access:is_public | True      |
-| properties                 |           |
-| ram                        | 4096      |
-| rxtx_factor                | 1.0       |
-| swap                       | 0         |
-| vcpus                      | 2         |
-+----------------------------+-----------+
-+----------------------------+----------+
-| Field                      | Value    |
-+----------------------------+----------+
-| OS-FLV-DISABLED:disabled   | False    |
-| OS-FLV-EXT-DATA:ephemeral  | 0        |
-| description                | None     |
-| disk                       | 80       |
-| id                         | 4        |
-| name                       | m1.large |
-| os-flavor-access:is_public | True     |
-| properties                 |          |
-| ram                        | 8192     |
-| rxtx_factor                | 1.0      |
-| swap                       | 0        |
-| vcpus                      | 4        |
-+----------------------------+----------+
-+----------------------------+-----------+
-| Field                      | Value     |
-+----------------------------+-----------+
-| OS-FLV-DISABLED:disabled   | False     |
-| OS-FLV-EXT-DATA:ephemeral  | 0         |
-| description                | None      |
-| disk                       | 160       |
-| id                         | 5         |
-| name                       | m1.xlarge |
-| os-flavor-access:is_public | True      |
-| properties                 |           |
-| ram                        | 16384     |
-| rxtx_factor                | 1.0       |
-| swap                       | 0         |
-| vcpus                      | 8         |
-+----------------------------+-----------+
-+----------------------------+---------+
-| Field                      | Value   |
-+----------------------------+---------+
-| OS-FLV-DISABLED:disabled   | False   |
-| OS-FLV-EXT-DATA:ephemeral  | 0       |
-| description                | None    |
-| disk                       | 1       |
-| id                         | 6       |
-| name                       | m2.tiny |
-| os-flavor-access:is_public | True    |
-| properties                 |         |
-| ram                        | 512     |
-| rxtx_factor                | 1.0     |
-| swap                       | 0       |
-| vcpus                      | 2       |
-+----------------------------+---------+
-
-wget https://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img
-openstack image create --file cirros-0.6.2-x86_64-disk.img --disk-format qcow2 --public cirros-0.6.2
-
-+------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Field            | Value                                                                                                                                                                                                                                                                                                                                    |
-+------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| checksum         | c8fc807773e5354afe61636071771906                                                                                                                                                                                                                                                                                                         |
-| container_format | bare                                                                                                                                                                                                                                                                                                                                     |
-| created_at       | 2025-11-13T18:55:08Z                                                                                                                                                                                                                                                                                                                     |
-| disk_format      | qcow2                                                                                                                                                                                                                                                                                                                                    |
-| file             | /v2/images/900e2f09-eaf3-4caa-982c-7ca63fc6b4c7/file                                                                                                                                                                                                                                                                                     |
-| id               | 900e2f09-eaf3-4caa-982c-7ca63fc6b4c7                                                                                                                                                                                                                                                                                                     |
-| min_disk         | 0                                                                                                                                                                                                                                                                                                                                        |
-| min_ram          | 0                                                                                                                                                                                                                                                                                                                                        |
-| name             | cirros-0.6.2                                                                                                                                                                                                                                                                                                                             |
-| owner            | 42ecbcd09f3140af87501a40b03aebb9                                                                                                                                                                                                                                                                                                         |
-| properties       | os_hash_algo='sha512', os_hash_value='1103b92ce8ad966e41235a4de260deb791ff571670c0342666c8582fbb9caefe6af07ebb11d34f44f8414b609b29c1bdf1d72ffa6faa39c88e8721d09847952b', os_hidden='False', owner_specified.openstack.md5='', owner_specified.openstack.object='images/cirros-0.6.2', owner_specified.openstack.sha256='', stores='file' |
-| protected        | False                                                                                                                                                                                                                                                                                                                                    |
-| schema           | /v2/schemas/image                                                                                                                                                                                                                                                                                                                        |
-| size             | 21430272                                                                                                                                                                                                                                                                                                                                 |
-| status           | active                                                                                                                                                                                                                                                                                                                                   |
-| tags             |                                                                                                                                                                                                                                                                                                                                          |
-| updated_at       | 2025-11-13T18:55:09Z                                                                                                                                                                                                                                                                                                                     |
-| virtual_size     | 117440512                                                                                                                                                                                                                                                                                                                                |
-| visibility       | public                                                                                                                                                                                                                                                                                                                                   |
-+------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+```bash
+source /root/contrail-kolla-ansible/etc/kolla/admin-openrc.sh
 ```
 
+---
 
+## Verification & Testing
 
-LOGGING
+### Access OpenStack Horizon
 
 ```
- tail -f /var/log/kolla/neutron/neutron-server.log
-2025-11-14 01:52:47.829 32 ERROR neutron_plugin_contrail.plugins.opencontrail.quota.driver [None req-802e869c-9593-4162-b537-e315a7f701ca 1e251927fecf4ef1b4ad74073c94499e 42ecbcd09f3140af87501a40b03aebb9 - - default default] Resource type subnetpool not found
-2025-11-14 01:52:49.226 32 INFO neutron.wsgi [-] 10.10.1.15 "GET / HTTP/1.1" status: 200  len: 228 time: 0.0019927
-2025-11-14 01:52:49.273 31 INFO neutron.wsgi [None req-7822cfee-24bf-4614-a8a6-e6a34f88e4ce 1e251927fecf4ef1b4ad74073c94499e 42ecbcd09f3140af87501a40b03aebb9 - - default default] 10.10.1.15 "GET /v2.0/subnets HTTP/1.1" status: 200  len: 668 time: 0.0347683
+http://<openstack-controller-ip>
+user: admin
+password: contrail123Nipa
 ```
 
+### Access OpenSDN Web UI
 
-
-ตรวจสอบเครื่อง tf-opensdn-controller
 ```
-root@moo-opensdn-controller:/etc/contrail/control# contrail-status
-Unable to find image 'registry.nipa.cloud/nipa-opensdn/opensdn-status:2025-11-03' locally
-2025-11-03: Pulling from nipa-opensdn/opensdn-status
-4622e890055f: Pull complete
-3a950f7ba0c7: Pull complete
-700648634947: Pull complete
-Digest: sha256:abc0575a25df72214d4dbcf7eed088372b6a1cf3b2ef85aed17f267b3ff23fb7
-Status: Downloaded newer image for registry.nipa.cloud/nipa-opensdn/opensdn-status:2025-11-03
+http://<opensdn-controller-ip>:8143
+user: admin
+password: contrail123Nipa
+```
+
+If the UI is not reachable over HTTP, try HTTPS on the same port.
+
+### Check contrail-status on the OpenSDN Controller
+
+```bash
+root@tf-opensdn-controller:/etc/contrail/control# contrail-status
 Pod              Service         Original Name                         Original Version  State    Id            Status
                  redis           opensdn-external-redis                nightly           running  0d868dce3147  Up 2 hours
 analytics        api             opensdn-analytics-api                 nightly           running  4718e59da113  Up 2 hours
 analytics        collector       opensdn-analytics-collector           nightly           running  f1c7ecf9b91e  Up 2 hours
-analytics        nodemgr         opensdn-nodemgr                       nightly           running  2c69186ee979  Up 2 hours
-analytics        provisioner     opensdn-provisioner                   nightly           running  50ee56c11b85  Up 2 hours
-analytics-alarm  alarm-gen       opensdn-analytics-alarm-gen           nightly           running  457c2f56f45b  Up 2 hours
-analytics-alarm  kafka           opensdn-external-kafka                nightly           running  cbfe11da6f00  Up 2 hours
-analytics-alarm  nodemgr         opensdn-nodemgr                       nightly           running  49d884fe388f  Up 2 hours
-analytics-alarm  provisioner     opensdn-provisioner                   nightly           running  2402c68aaad5  Up 2 hours
-analytics-snmp   nodemgr         opensdn-nodemgr                       nightly           running  d41e32543e04  Up 2 hours
-analytics-snmp   provisioner     opensdn-provisioner                   nightly           running  f08a27fc8484  Up 2 hours
-analytics-snmp   snmp-collector  opensdn-analytics-snmp-collector      nightly           running  17175110198a  Up 2 hours
-analytics-snmp   topology        opensdn-analytics-snmp-topology       nightly           running  84c5f65ee3d2  Up 2 hours
-config           api             opensdn-controller-config-api         nightly           running  f368d9494d6d  Up 37 seconds
-config           device-manager  opensdn-controller-config-devicemgr   nightly           running  1a40fe7371af  Up 36 seconds
-config           dnsmasq         opensdn-controller-config-dnsmasq     nightly           running  21837788e273  Up 2 seconds
-config           nodemgr         opensdn-nodemgr                       nightly           running  25f3c85578b7  Up 37 seconds
-config           provisioner     opensdn-provisioner                   nightly           running  26b996a49bda  Up 37 seconds
-config           schema          opensdn-controller-config-schema      nightly           running  0aa942271705  Up 37 seconds
-config           svc-monitor     opensdn-controller-config-svcmonitor  nightly           running  b005ca864496  Up 37 seconds
-config-database  cassandra       opensdn-external-cassandra            nightly           running  bc8c8413e9a2  Up 2 hours
-config-database  nodemgr         opensdn-nodemgr                       nightly           running  e49aa892e5ae  Up 2 hours
-config-database  provisioner     opensdn-provisioner                   nightly           running  1b866cabf330  Up 2 hours
+...
 config-database  rabbitmq        opensdn-external-rabbitmq             nightly           running  3af11257a395  Up 2 hours
 config-database  zookeeper       opensdn-external-zookeeper            nightly           running  e06aa9685a7f  Up 2 hours
 control          control         opensdn-controller-control-control    nightly           running  18aef0e7af06  Up 15 seconds
-control          dns             opensdn-controller-control-dns        nightly           running  d89c2edc70a6  Up 15 seconds
-control          named           opensdn-controller-control-named      nightly           running  a1836381344d  Up 14 seconds
-control          nodemgr         opensdn-nodemgr                       nightly           running  7eb67a0d7402  Up 15 seconds
-control          provisioner     opensdn-provisioner                   nightly           running  45ede9be39e0  Up 15 seconds
-database         cassandra       opensdn-external-cassandra            nightly           running  5fb07f00ef2b  Up 2 hours
-database         nodemgr         opensdn-nodemgr                       nightly           running  f632984b90cd  Up 2 hours
-database         provisioner     opensdn-provisioner                   nightly           running  a3288b288e4c  Up 2 hours
-database         query-engine    opensdn-analytics-query-engine        nightly           running  df85aae5242a  Up 2 hours
-webui            job             opensdn-controller-webui-job          nightly           running  5e135c391b3d  Up 2 hours
-webui            web             opensdn-controller-webui-web          nightly           running  da3d376f5865  Up 6 minutes
-
-WARNING: container with original name 'opensdn-external-redis' have Pod or Service empty. Pod: '' / Service: 'redis'. Please pass NODE_TYPE with pod name to container's env
+...
 
 == Contrail control ==
 nodemgr: active
@@ -811,29 +656,10 @@ schema: active
 svc-monitor: active
 device-manager: active
 
-== Contrail analytics-snmp ==
-nodemgr: active
-snmp-collector: active
-topology: active
-
-== Contrail analytics-alarm ==
-nodemgr: active
-alarm-gen: active
-kafka: active
-
 == Contrail analytics ==
 nodemgr: active
 api: active
 collector: active
-
-== Contrail database ==
-nodemgr: active
-query-engine: active
-cassandra: active
-
-== Contrail webui ==
-web: active
-job: active
 
 == Contrail config-database ==
 nodemgr: active
@@ -842,8 +668,107 @@ zookeeper: active
 rabbitmq: active
 ```
 
+---
 
+## Create Basic Resources
 
-## Know Issue
+After sourcing the OpenRC file on the controller, create standard flavors and upload a test image:
 
-- Compute Node vrouter ยังไม่ Up
+```bash
+openstack flavor create --id 1 --ram 512   --disk 1   --vcpus 1 m1.tiny
+openstack flavor create --id 2 --ram 2048  --disk 20  --vcpus 1 m1.small
+openstack flavor create --id 3 --ram 4096  --disk 40  --vcpus 2 m1.medium
+openstack flavor create --id 4 --ram 8192  --disk 80  --vcpus 4 m1.large
+openstack flavor create --id 5 --ram 16384 --disk 160 --vcpus 8 m1.xlarge
+openstack flavor create --id 6 --ram 512   --disk 1   --vcpus 2 m2.tiny
+
+wget https://download.cirros-cloud.net/0.6.2/cirros-0.6.2-x86_64-disk.img
+openstack image create --file cirros-0.6.2-x86_64-disk.img --disk-format qcow2 --public cirros-0.6.2
+```
+
+---
+
+## Logging
+
+```bash
+# Neutron server log
+tail -f /var/log/kolla/neutron/neutron-server.log
+
+# Nova compute log
+tail -f /var/log/kolla/nova/nova-compute.log
+
+# vRouter agent log (on compute nodes)
+tail -f /var/log/contrail/contrail-vrouter-agent.log
+```
+
+Example neutron log output:
+```
+2025-11-14 01:52:47.829 32 ERROR neutron_plugin_contrail.plugins.opencontrail.quota.driver [...] Resource type subnetpool not found
+2025-11-14 01:52:49.226 32 INFO neutron.wsgi [-] 10.10.1.15 "GET / HTTP/1.1" status: 200  len: 228 time: 0.0019927
+2025-11-14 01:52:49.273 31 INFO neutron.wsgi [...] 10.10.1.15 "GET /v2.0/subnets HTTP/1.1" status: 200  len: 668 time: 0.0347683
+```
+
+---
+
+## Advanced Terraform Usage
+
+### Applying Specific Resources
+
+You can use the `-target` flag to apply changes to a specific resource or a single instance of a resource created with `count`. This is useful for development or for recovering a single failed resource.
+
+Note: Using `-target` can be risky as it ignores dependencies. Use with caution.
+
+```bash
+# Apply changes only to the OpenStack controller instance and all of its related resources
+terraform apply -target=openstack_compute_instance_v2.tf-openstack-controller \
+  -target=openstack_networking_port_v2.tf-openstack-controller-eth0 \
+  -target=openstack_networking_floatingip_v2.tf-openstack-controller-external-ip \
+  -target=openstack_networking_floatingip_associate_v2.tf-openstack-controller-fip-associate \
+  -target=ssh_resource.test-ssh-openstack-controller
+
+# Apply changes to the first compute node (index 0) and all of its related resources
+terraform apply \
+  -target=openstack_networking_port_v2.tf-compute-eth0-ports[0] \
+  -target=openstack_networking_port_v2.tf-compute-eth1-ports[0] \
+  -target=openstack_networking_floatingip_v2.tf-compute-external-ips[0] \
+  -target=openstack_compute_instance_v2.tf-computes[0] \
+  -target=openstack_networking_floatingip_associate_v2.tf-compute-fip-associates[0] \
+  -target=ssh_resource.test-ssh-computes[0]
+```
+
+### Destroying Resources
+
+```bash
+# Tear down all infrastructure
+terraform destroy
+
+# Destroy only the second compute node (index 1)
+terraform destroy -target=openstack_compute_instance_v2.tf-computes[1]
+```
+
+---
+
+## Known Issues
+
+- **RabbitMQ crash-loop** on a fresh install almost always indicates a hostname mismatch — verify hostnames (Step 10) before any other troubleshooting.
+- **OpenSDN Web UI** is accessible at port **8143** on the OpenSDN controller. If the UI is not reachable over HTTP, try HTTPS on the same port.
+- **Compute node vRouter not coming up** — the `install_opensdn.yml` playbook runs a vRouter initialization sequence at the end (DHCP on eth1, kernel module reload, compose restart). If the agent still fails to establish an XMPP session, see the vhost0 connectivity note below.
+
+---
+
+## Potential Issues
+
+### vhost0 XMPP Connectivity on NIPA Cloud
+
+After vRouter initializes, XMPP sessions sourced from vhost0 may be dropped by port security on the control-plane network. If the vRouter agent fails to connect to the control plane, setting an allowed-address-pair on the compute node's eth0 port has been observed to help in some deployments:
+
+```bash
+# Run from the controller with OpenRC sourced
+# Port names follow the resource_prefix set in terraform.tfvars (default: tf)
+PORT_NAME="<resource_prefix>-compute-<N>-eth0"   # e.g. tf-compute-1-eth0
+VHOST0_CIDR="<network2_subnet>.0/24"   # /24 of the vhost0 IP
+
+PORT_ID=$(openstack port show "${PORT_NAME}" -f value -c id)
+openstack port set --allowed-address "ip-address=${VHOST0_CIDR}" "${PORT_ID}"
+```
+
