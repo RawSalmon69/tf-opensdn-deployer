@@ -21,8 +21,8 @@ openstack_application_credential_secret = ""
 # IDs can be found in the NIPA Cloud portal under Compute → Images / Network → Networks
 # =============================================================================
 
-# Ubuntu 22.04 image ID
-image_id = ""
+# Ubuntu 22.04 image ID (ubuntu-22-v260122)
+image_id = "29b95311-db5e-410f-8d14-09e94f2f2f3e"
 
 # Control/management network (Network1)
 network1_id = ""
