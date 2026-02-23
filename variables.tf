@@ -75,12 +75,12 @@ variable "floating_ip_pool_name" {
 
 variable "controller_flavor_name" {
   type = string
-  default = "csa.2xlarge.v2"
+  default = "a8ae5a56.s4c8m.v1"
 }
 
 variable "compute_flavor_name" {
   type = string
-  default = "csa.2xlarge.v2"
+  default = "a8ae5a56.s2c4m.v1"
 }
 
 variable "compute_instance_count" {

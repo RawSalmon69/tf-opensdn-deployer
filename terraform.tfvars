@@ -36,11 +36,11 @@ network2_id = ""
 
 floating_ip_pool_name = "Standard_Public_IP_Pool_NON"
 
-# Flavor for the OpenStack controller and OpenSDN controller
-controller_flavor_name = "csa.2xlarge.v2"
+# Flavor for the OpenStack controller and OpenSDN controller (4 core, 8GB RAM)
+controller_flavor_name = "a8ae5a56.s4c8m.v1"
 
-# Flavor for compute nodes
-compute_flavor_name = "csa.2xlarge.v2"
+# Flavor for compute nodes (2 core, 4GB RAM)
+compute_flavor_name = "a8ae5a56.s2c4m.v1"
 
 # Number of compute nodes to provision
 compute_instance_count = 2
