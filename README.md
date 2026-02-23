@@ -61,8 +61,8 @@ These are installed automatically by `scripts/preflight.sh` in the `tf-ansible-d
 
 Terraform provisions compute instances, ports, and floating IPs but does not create networks, the router, or security groups. The following resources must exist in the NIPA Cloud portal before running `terraform apply`.
 
-1. Create Network1 (e.g. `10.10.1.0/24`) — control plane and management traffic (eth0 on all nodes)
-2. Create Network2 (e.g. `10.20.1.0/24`) — data plane and vRouter (eth1 / vhost0 on compute nodes)
+1. Create Network1 (e.g. `10.10.1.0/24`) — control plane and management traffic (eth0 on all nodes). Disable RPF (Reverse Path Filtering) on this network.
+2. Create Network2 (e.g. `10.20.1.0/24`) — data plane and vRouter (eth1 / vhost0 on compute nodes). Disable RPF (Reverse Path Filtering) on this network.
 3. Create a Router and attach both networks to it
 4. Add a static route on Network2: Destination `10.10.1.0/24`, Next hop `10.20.1.1`
 5. Ensure the following security groups exist (create them if they do not):
