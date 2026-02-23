@@ -174,6 +174,8 @@ terraform apply
 
 After `terraform apply` completes, note the output — it includes the floating IPs and internal IPs you will need throughout Phase 2.
 
+> **Action required before Phase 2.** Floating IP association and eth1 attachment must be completed via the NIPA Cloud dashboard before proceeding. See [Network Interface Setup](#reference-network-interface-setup) below.
+
 ---
 
 ## Phase 2 — Run from the OpenStack Controller
@@ -184,11 +186,23 @@ After `terraform apply` completes, note the output — it includes the floating 
 
 ## Reference: Network Interface Setup
 
-After `terraform apply`, the eth1 data ports on compute nodes must be attached manually before installing OpenStack:
+After `terraform apply`, two steps must be completed in the NIPA Cloud portal before proceeding to Phase 2.
 
-- Run `terraform show` to identify the eth1 port IDs for each compute node.
-- Attach each eth1 port via the NIPA Cloud portal: Compute → Instances → Attach Interface.
-- Verify the `In-Cluster` security group is applied to all eth1 ports.
+**1. Associate floating IPs**
+
+For each instance (openstack-controller, opensdn-controller, compute-1, compute-2):
+
+- Go to Network → Floating IPs in the NIPA Cloud dashboard.
+- Associate each floating IP to the corresponding instance's eth0 port.
+- Confirm the FIP appears on the instance under Compute → Instances.
+
+**2. Attach eth1 (Network2) to compute nodes**
+
+For each compute node:
+
+- Run `terraform output` to get the eth1 port IDs (or find them in Network → Ports by name, e.g. `tf-compute-1-eth1`).
+- Go to Compute → Instances → select the compute instance → Attach Interface.
+- Select the pre-created eth1 port. Verify the `In-Cluster` security group is applied.
 
 ---
 
@@ -201,6 +215,17 @@ terraform apply
 ```
 
 Note the output — you will need the floating IPs and internal IPs in subsequent steps.
+
+---
+
+### Step 1.5 — Manual portal steps (NIPA Cloud dashboard)
+
+Before SSH-ing into any node, complete the manual steps in the NIPA Cloud portal:
+
+1. **Associate all 4 floating IPs** to their respective instances (openstack-controller, opensdn-controller, compute-1, compute-2) via Network → Floating IPs → Associate.
+2. **Attach the eth1 port** to each compute instance via Compute → Instances → Attach Interface. Use the port names `<prefix>-compute-1-eth1` and `<prefix>-compute-2-eth1` (visible in Network → Ports).
+
+See [Network Interface Setup](#reference-network-interface-setup) for details.
 
 ---
 

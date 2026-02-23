@@ -13,10 +13,6 @@ resource "openstack_networking_floatingip_v2" "tf-openstack-controller-external-
   pool = var.floating_ip_pool_name
 }
 
-resource "openstack_networking_floatingip_associate_v2" "tf-openstack-controller-fip-associate" {
-  floating_ip = openstack_networking_floatingip_v2.tf-openstack-controller-external-ip.address
-  port_id     = openstack_networking_port_v2.tf-openstack-controller-eth0.id
-}
 
 resource "openstack_compute_instance_v2" "tf-openstack-controller" {
   availability_zone       = var.instance_az
@@ -51,7 +47,6 @@ resource "ssh_resource" "test-ssh-openstack-controller" {
   ]
 
   depends_on = [
-    openstack_networking_floatingip_associate_v2.tf-openstack-controller-fip-associate,
     openstack_compute_instance_v2.tf-openstack-controller
   ]
 }

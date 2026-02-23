@@ -15,28 +15,6 @@ resource "openstack_networking_floatingip_v2" "tf-compute-external-ips" {
   pool  = var.floating_ip_pool_name
 }
 
-resource "null_resource" "debug_before_fip_association" {
-  count = var.compute_instance_count
-
-  # Trigger the print every time the Port ID changes
-  triggers = {
-    port_id = openstack_networking_port_v2.tf-compute-eth0-ports[count.index].id
-  }
-
-  provisioner "local-exec" {
-    command = "echo '>>> PRE-CHECK: Ready to associate FIP with Port ID: ${self.triggers.port_id}'"
-  }
-
-  # Ensure this runs only after the compute is ready (same as your original depends_on)
-  depends_on = [ openstack_compute_instance_v2.tf-computes ]
-}
-
-resource "openstack_networking_floatingip_associate_v2" "tf-compute-fip-associates" {
-  count       = var.compute_instance_count
-  floating_ip = openstack_networking_floatingip_v2.tf-compute-external-ips[count.index].address
-  port_id     = openstack_networking_port_v2.tf-compute-eth0-ports[count.index].id
-  depends_on = [ openstack_compute_instance_v2.tf-computes ]
-}
 
 resource "openstack_networking_port_v2" "tf-compute-eth1-ports" {
   count      = var.compute_instance_count
@@ -83,7 +61,6 @@ resource "ssh_resource" "test-ssh-computes" {
   ]
 
   depends_on = [
-    openstack_networking_floatingip_associate_v2.tf-compute-fip-associates,
     openstack_compute_instance_v2.tf-computes
   ]
 }
