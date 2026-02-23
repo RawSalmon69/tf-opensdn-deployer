@@ -38,7 +38,7 @@
 These are installed automatically by `scripts/preflight.sh` in the `tf-ansible-deployer` repo, run in Step 4 of the Deployment Order below.
 
 **Python packages**:
-- `ansible-core>=2.15,<2.17`
+- `ansible-core>=2.17,<2.19`
 - `kolla-ansible==20.3.0`
 - `requests<2.32`
 
