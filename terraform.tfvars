@@ -4,7 +4,7 @@
 #   Project Overview → Manage Project → Download Public API RC file
 # =============================================================================
 
-openstack_auth_url    = "https://cloud-api.nipa.cloud:5000/v3"
+openstack_auth_url    = "https://identity-api.nipa.cloud/v3"
 openstack_domain_name = "nipacloud"
 openstack_region      = "NCP-TH"
 instance_az           = "NCP-NON"
