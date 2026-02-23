@@ -74,7 +74,7 @@ Terraform provisions compute instances, ports, and floating IPs but does not cre
    | `TF_ENDPOINT_SG` | Ingress on ports 8082, 8085, 8143, 8180 |
    | `ALL` | Unrestricted ingress (used during initial setup) |
 
-6. Create an Application Credential for Terraform. The credential ID and secret can be downloaded from the NIPA Cloud dashboard under Project Overview → Manage Project.
+6. Create an Application Credential for Terraform. The credential ID and secret can be obtained from the NIPA Cloud dashboard under Project Overview → Manage Project → Public API.
 7. Verify that the project has sufficient quota for the required number of instances, volumes, and floating IPs.
 
 ### Install Terraform
@@ -118,7 +118,7 @@ The repository includes a `terraform.tfvars` file with NIPA Cloud defaults pre-f
 | Variable | Where to find it |
 |---|---|
 | `project_id` | NIPA Cloud dashboard → Project Overview → Manage Project |
-| `openstack_application_credential_id` / `_secret` | NIPA Cloud dashboard → Project Overview → Manage Project |
+| `openstack_application_credential_id` / `_secret` | NIPA Cloud dashboard → Project Overview → Manage Project → Public API |
 | `image_id` | Ubuntu 22.04 — use image `ubuntu-22-v260122` (NIPA Cloud portal → Compute → Images) |
 | `network1_id` | NIPA Cloud portal → Network → Networks |
 | `network2_id` | NIPA Cloud portal → Network → Networks |
