@@ -11,6 +11,9 @@ resource "openstack_networking_port_v2" "tf-openstack-controller-eth0" {
 
 resource "openstack_networking_floatingip_v2" "tf-openstack-controller-external-ip" {
   pool = var.floating_ip_pool_name
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 
@@ -32,21 +35,4 @@ resource "openstack_compute_instance_v2" "tf-openstack-controller" {
   }
   user_data             = local.user_data_cloud_init
 
-}
-
-resource "ssh_resource" "test-ssh-openstack-controller" {
-  host     = openstack_networking_floatingip_v2.tf-openstack-controller-external-ip.address
-  user     = "nc-user"
-  password = var.ssh_user_password
-  when = "create"
-  timeout     = "5m"
-  retry_delay = "5s"
-
-  commands = [
-    "echo 'SSH connection to OpenStack Controller successful'"
-  ]
-
-  depends_on = [
-    openstack_compute_instance_v2.tf-openstack-controller
-  ]
 }

@@ -13,6 +13,9 @@ resource "openstack_networking_port_v2" "tf-compute-eth0-ports" {
 resource "openstack_networking_floatingip_v2" "tf-compute-external-ips" {
   count = var.compute_instance_count
   pool  = var.floating_ip_pool_name
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 
@@ -45,22 +48,4 @@ resource "openstack_compute_instance_v2" "tf-computes" {
 
   user_data             = local.user_data_cloud_init
 
-}
-
-resource "ssh_resource" "test-ssh-computes" {
-  count    = var.compute_instance_count
-  host     = openstack_networking_floatingip_v2.tf-compute-external-ips[count.index].address
-  user     = "nc-user"
-  password = var.ssh_user_password
-  when = "create"
-  timeout     = "5m"
-  retry_delay = "5s"
-  
-  commands = [
-    "echo 'SSH connection to Compute Node ${count.index+1} successful'"
-  ]
-
-  depends_on = [
-    openstack_compute_instance_v2.tf-computes
-  ]
 }

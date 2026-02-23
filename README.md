@@ -128,37 +128,17 @@ All other values (region, availability zone, flavor names, etc.) are set to NIPA
 
 ---
 
-### Customizing the Instance Password
+### Instance Password
 
-The instances are created with default user `nc-user` and password `y0V#ew8k4nM+`. To change it, update two variables in `terraform.tfvars`:
+After `terraform apply`, reset the `root` password for each instance via the NIPA Cloud dashboard: Compute → Instances → select instance → Reset Password.
 
-1. `ssh_user_password` — plain-text password used by Terraform's SSH connection test
-2. `ssh_user_password_hash` — hashed password set by cloud-init on the instance
+Once you can log in via the VNC console, set a password for the `root` user:
 
-#### Generate a password hash
-
-**macOS / Linux:**
 ```bash
-openssl passwd -6 'MyNewSecretPassword!'
+passwd root
 ```
 
-**Windows (PowerShell — requires OpenSSL):**
-```powershell
-# Option 1: via WSL
-wsl openssl passwd -6 'MyNewSecretPassword!'
-
-# Option 2: via Git Bash
-openssl passwd -6 'MyNewSecretPassword!'
-```
-
-The output starts with `$6$`. Add it to `terraform.tfvars`:
-
-```hcl
-ssh_user_password      = "MyNewSecretPassword!"
-ssh_user_password_hash = "$6$your_generated_hash_string..."
-```
-
-If you need to reset an instance password after deployment, it can be done directly from the NIPA Cloud dashboard under Compute → Instances → Reset Password.
+Use `root` and the password you set when SSHing into the instances for all subsequent steps.
 
 ---
 
@@ -230,8 +210,7 @@ Before SSH-ing into any node, complete the following in the NIPA Cloud dashboard
 ### Step 2 — SSH into the OpenStack controller
 
 ```bash
-ssh nc-user@<OPENSTACK_CONTROLLER_FIP>
-sudo -i
+ssh root@<OPENSTACK_CONTROLLER_FIP>
 ```
 
 > From this point on, every command runs on the OpenStack controller. It acts as the Ansible deployer for all nodes.
@@ -400,10 +379,10 @@ Then on the controller, create the file:
 ```bash
 cat > ~/tf-ansible-deployer/my_inventory.ini << 'EOF'
 # Paste terraform output here, for example:
-tf-openstack-controller     ansible_host=10.10.1.15  ansible_ssh_user=nc-user   #fip=103.29.190.213
-tf-opensdn-controller       ansible_host=10.10.1.18  ansible_ssh_user=nc-user   #fip=103.29.190.227
-tf-compute-1                ansible_host=10.10.1.16  ansible_ssh_user=nc-user   #fip=103.29.190.224
-tf-compute-2                ansible_host=10.10.1.17  ansible_ssh_user=nc-user   #fip=103.29.190.225
+tf-openstack-controller     ansible_host=10.10.1.15  ansible_ssh_user=root   #fip=103.29.190.213
+tf-opensdn-controller       ansible_host=10.10.1.18  ansible_ssh_user=root   #fip=103.29.190.227
+tf-compute-1                ansible_host=10.10.1.16  ansible_ssh_user=root   #fip=103.29.190.224
+tf-compute-2                ansible_host=10.10.1.17  ansible_ssh_user=root   #fip=103.29.190.225
 EOF
 ```
 
@@ -691,18 +670,14 @@ Note: Using `-target` can be risky as it ignores dependencies. Use with caution.
 # Apply changes only to the OpenStack controller instance and all of its related resources
 terraform apply -target=openstack_compute_instance_v2.tf-openstack-controller \
   -target=openstack_networking_port_v2.tf-openstack-controller-eth0 \
-  -target=openstack_networking_floatingip_v2.tf-openstack-controller-external-ip \
-  -target=openstack_networking_floatingip_associate_v2.tf-openstack-controller-fip-associate \
-  -target=ssh_resource.test-ssh-openstack-controller
+  -target=openstack_networking_floatingip_v2.tf-openstack-controller-external-ip
 
 # Apply changes to the first compute node (index 0) and all of its related resources
 terraform apply \
   -target=openstack_networking_port_v2.tf-compute-eth0-ports[0] \
   -target=openstack_networking_port_v2.tf-compute-eth1-ports[0] \
   -target=openstack_networking_floatingip_v2.tf-compute-external-ips[0] \
-  -target=openstack_compute_instance_v2.tf-computes[0] \
-  -target=openstack_networking_floatingip_associate_v2.tf-compute-fip-associates[0] \
-  -target=ssh_resource.test-ssh-computes[0]
+  -target=openstack_compute_instance_v2.tf-computes[0]
 ```
 
 ### Destroying Resources

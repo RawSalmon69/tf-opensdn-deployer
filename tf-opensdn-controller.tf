@@ -11,6 +11,9 @@ resource "openstack_networking_port_v2" "tf-opensdn-controller-eth0" {
 
 resource "openstack_networking_floatingip_v2" "tf-opensdn-controller-external-ip" {
   pool = var.floating_ip_pool_name
+  lifecycle {
+    ignore_changes = all
+  }
 }
 
 
@@ -32,21 +35,4 @@ resource "openstack_compute_instance_v2" "tf-opensdn-controller" {
   }
   user_data             = local.user_data_cloud_init
 
-}
-
-resource "ssh_resource" "test-ssh-opensdn-controller" {
-  host     = openstack_networking_floatingip_v2.tf-opensdn-controller-external-ip.address
-  user     = "nc-user"
-  password = var.ssh_user_password
-  when = "create"
-  timeout     = "5m"
-  retry_delay = "5s"
-
-  commands = [
-    "echo 'SSH connection to OpenSDN Controller successful'"
-  ]
-
-  depends_on = [
-    openstack_compute_instance_v2.tf-opensdn-controller
-  ]
 }
