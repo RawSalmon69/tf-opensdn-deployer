@@ -697,6 +697,19 @@ terraform destroy -target=openstack_compute_instance_v2.tf-computes[1]
 - **RabbitMQ crash-loop** on a fresh install almost always indicates a hostname mismatch — verify hostnames (Step 10) before any other troubleshooting.
 - **OpenSDN Web UI** is accessible at port **8143** on the OpenSDN controller. If the UI is not reachable over HTTP, try HTTPS on the same port.
 - **Compute node vRouter not coming up** — the `install_opensdn.yml` playbook runs a vRouter initialization sequence at the end (DHCP on eth1, kernel module reload, compose restart). If the agent still fails to establish an XMPP session, see the vhost0 connectivity note below.
+- **vRouter agent stuck in initializing loop** — if `contrail-status` shows `nodemgr: initializing` and `agent: initializing` instead of `active`, run `ip a` on the affected compute node and check whether `eth1` and `vhost0` have IP addresses. If both are missing an IP (eth1 has no `inet` line and vhost0 is present but unaddressed), the kernel module needs to be reloaded after acquiring a DHCP lease:
+
+  ```bash
+  cd /etc/contrail/vrouter
+  docker compose down
+  dhclient eth1
+  ip a                        # verify eth1 now has an IP
+  modprobe -r vrouter
+  lsmod | grep vrouter        # should return nothing
+  docker compose up -d
+  ip a                        # vhost0 should now carry the eth1 IP
+  contrail-status             # both should be active
+  ```
 
 ---
 
