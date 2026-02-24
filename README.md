@@ -471,11 +471,7 @@ Hostname validation runs as play 2 — resolve any failures before continuing.
 
 ### Step 11 — Attach eth1 ports (NIPA Cloud portal)
 
-Before installing OpenStack, attach each compute node's eth1 data port via the NIPA Cloud portal:
-
-- Run `terraform show` (locally) to identify the eth1 port IDs for each compute node.
-- Attach each port via the NIPA Cloud portal: Compute → Instances → Attach Interface.
-- Verify the `In-Cluster` security group is applied to all eth1 ports.
+Ensure the eth1 ports are attached to each compute node before continuing. This was covered in Step 1.5 — if not done yet, complete it now.
 
 ---
 
