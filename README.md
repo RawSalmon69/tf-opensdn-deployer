@@ -132,10 +132,13 @@ All other values (region, availability zone, flavor names, etc.) are set to NIPA
 
 After `terraform apply`, reset the `root` password for each instance via the NIPA Cloud dashboard: Compute → Instances → select instance → Reset Password.
 
-Once you can log in via the VNC console, set a password for the `root` user:
+Once you can log in via the VNC console, set a password for the `root` user and enable SSH root login:
 
 ```bash
 passwd root
+
+sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+systemctl restart sshd
 ```
 
 Use `root` and the password you set when SSHing into the instances for all subsequent steps.
