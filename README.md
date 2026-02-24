@@ -636,6 +636,52 @@ openstack image create --file cirros-0.6.2-x86_64-disk.img --disk-format qcow2 -
 
 ---
 
+## End-to-End Connectivity Test
+
+This test verifies that OpenSDN's virtual networking is working correctly by spinning up two CirrOS instances on a shared network and confirming they can reach each other.
+
+All steps are performed through Horizon (the OpenStack dashboard).
+
+### 1. Create a network and subnet
+
+In Horizon: Network → Networks → Create Network. Create a network named `cirros-net` with a subnet (e.g. `192.168.100.0/24`).
+
+### 2. Create a security group
+
+In Horizon: Network → Security Groups → Create Security Group. Name it `cirros-sg` and add rules to allow ICMP (ingress) and TCP port 22 (ingress).
+
+### 3. Launch two CirrOS instances
+
+In Horizon: Compute → Instances → Launch Instance. Launch two instances named `cirros-1` and `cirros-2` using:
+- Image: `cirros-0.6.2`
+- Flavor: `m1.tiny`
+- Network: `cirros-net`
+- Security Group: `cirros-sg`
+
+Wait for both to reach **Active** status. The Network Topology view (Network → Network Topology) should show both instances connected to `cirros-net`:
+
+![cirros-demo](cirros-demo.png)
+
+### 4. Ping between instances
+
+Note the IP of `cirros-2` from the Instances list. Open the console of `cirros-1` via Compute → Instances → cirros-1 → Console.
+
+Log in with:
+```
+user: cirros
+password: gocubsgo
+```
+
+Then ping `cirros-2`:
+
+```bash
+ping <cirros-2-ip>
+```
+
+A successful ping confirms OpenSDN vRouter is forwarding traffic between instances correctly.
+
+---
+
 ## Logging
 
 ```bash
