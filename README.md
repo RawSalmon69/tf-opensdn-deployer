@@ -162,6 +162,8 @@ terraform apply
 
 After `terraform apply` completes, note the output — it includes the floating IPs and internal IPs you will need throughout Phase 2.
 
+![terraform apply output](images/terraform_apply_output.png)
+
 > **Action required before Phase 2.** Associate all floating IPs to their instances and attach the eth1 ports to the compute nodes via the NIPA Cloud dashboard before proceeding.
 
 ---
