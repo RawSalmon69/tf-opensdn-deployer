@@ -540,12 +540,13 @@ The generated credential files are in `/root/contrail-kolla-ansible/etc/kolla/`:
 -rw------- 1 root root   394 public-openrc-system.sh
 ```
 
-The Keystone URL in these files is generated with an empty host — fix it before use:
+The Keystone URL in these files is generated with an empty host — replace it with the internal IP of your OpenStack controller before use:
 
 ```bash
 cd /root/contrail-kolla-ansible/etc/kolla
-sed -i 's#http://:5000#http://10.10.1.15:5000#g' clouds.yaml
-sed -i 's#http://:5000#http://10.10.1.15:5000#g' *.sh
+CONTROLLER_IP=<OPENSTACK_CONTROLLER_INTERNAL_IP>
+sed -i "s#http://:5000#http://${CONTROLLER_IP}:5000#g" clouds.yaml
+sed -i "s#http://:5000#http://${CONTROLLER_IP}:5000#g" *.sh
 ```
 
 Then source the credentials:
