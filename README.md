@@ -64,7 +64,12 @@ Terraform provisions compute instances, ports, and floating IPs but does not cre
 1. Create Network1 (e.g. `10.10.1.0/24`) — control plane and management traffic (eth0 on all nodes). Disable RPF (Reverse Path Filtering) on this network.
 2. Create Network2 (e.g. `10.20.1.0/24`) — data plane and vRouter (eth1 / vhost0 on compute nodes). Disable RPF (Reverse Path Filtering) on this network.
 3. Create a Router and attach both networks to it
+
+   ![Router with both networks attached](images/tf-router_after_attached.png)
+
 4. Add a static route on Network2: Destination `10.10.1.0/24`, Next hop `10.20.1.1`
+
+   ![Network2 subnet with static route and eth1 ports](images/tf-net2_after_attached.png)
 5. Ensure the following security groups exist (create them if they do not):
 
    | Group | Purpose |
@@ -207,6 +212,14 @@ Before SSH-ing into any node, complete the following in the NIPA Cloud dashboard
 
 1. **Associate all 4 floating IPs** to their respective instances (openstack-controller, opensdn-controller, compute-1, compute-2) via Network → Floating IPs → Associate. Run `terraform show` to see which floating IP belongs to which instance.
 2. **Attach the eth1 port** to each compute instance via Compute → Instances → Attach Interface. Port names are `<prefix>-compute-1-eth1` and `<prefix>-compute-2-eth1`. Port IDs are available via `terraform show`.
+
+   After both steps, the Compute Instances page should show all 4 nodes as **Healthy/active** with both internal and external IPs:
+
+   ![Instances after terraform apply and eth1 attachment](images/instances_after_terraform_and_attached_eth1.png)
+
+   Network1 should show eth0 ports for all 4 nodes:
+
+   ![Network1 ports after attachment](images/tf-net1_after_attached.png)
 
 ---
 
@@ -567,6 +580,8 @@ user: admin
 password: contrail123Nipa
 ```
 
+![OpenStack Horizon dashboard](images/openstack_dashboard.png)
+
 ### Access OpenSDN Web UI
 
 ```
@@ -577,7 +592,13 @@ password: contrail123Nipa
 
 If the UI is not reachable over HTTP, try HTTPS on the same port.
 
+![OpenSDN Web UI dashboard](images/opensdn_dashboard.png)
+
 ### Check contrail-status on the OpenSDN Controller
+
+A successful deployment should show all services active across all nodes:
+
+![Successful contrail-status check](images/successful_status_check.png)
 
 ```bash
 root@tf-opensdn-controller:/etc/contrail/control# contrail-status
@@ -660,7 +681,7 @@ In Horizon: Compute → Instances → Launch Instance. Launch two instances name
 
 Wait for both to reach **Active** status. The Network Topology view (Network → Network Topology) should show both instances connected to `cirros-net`:
 
-![cirros-demo](cirros-demo.png)
+![cirros-demo](images/cirros-demo.png)
 
 ### 4. Ping between instances
 
