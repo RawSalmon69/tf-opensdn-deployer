@@ -123,7 +123,7 @@ The repository includes a `terraform.tfvars` file with NIPA Cloud defaults pre-f
 | Variable | Where to find it |
 |---|---|
 | `project_id` | NIPA Cloud dashboard → Project Overview → Manage Project |
-| `openstack_application_credential_id` / `_secret` | NIPA Cloud dashboard → Project Overview → Manage Project → Public API |
+| `openstack_application_credential_id` / `_secret` | NIPA Cloud dashboard → Public API |
 | `image_id` | Ubuntu 22.04 — use image `ubuntu-22-v260122` (NIPA Cloud portal → Compute → Images) |
 | `network1_id` | NIPA Cloud portal → Network → Networks |
 | `network2_id` | NIPA Cloud portal → Network → Networks |
